@@ -133,47 +133,54 @@
         }
 
         // Запуск умного сетевого лаунчера
-        function checkAndDownloadUpdate() {
+                function checkAndDownloadUpdate() {
             var fileExists = fso.FileExists(localLogPath);
-            
-            // Временный файл для скачивания из сети
             var tempPath = fso.BuildPath(shell.CurrentDirectory, "logic_temp.txt");
+            
             if (fso.FileExists(tempPath)) { try { fso.DeleteFile(tempPath, true); } catch(e){} }
 
             var internetWorks = false;
             var remoteCode = "";
 
             try {
-                // Используем мощную встроенную системную утилиту curl с флагом -k (игнорировать ошибки шифрования)
-                // Кэш сбрасываем, добавляя случайное число в конец URL
+                // Скачиваем файл через curl напрямую с гитхаба
                 var uniqueUrl = SERVER_SCRIPT_URL + "?nocache=" + new Date().getTime();
                 var cmd = 'cmd /c curl -k -s -o "' + tempPath + '" "' + uniqueUrl + '"';
-                
-                // Запускаем скрытно (0) и ждем окончания загрузки (true)
                 shell.Run(cmd, 0, true);
 
-                // Если файл скачался и он не пустой — интернет работает!
+                // Если файл успешно скачался из сети
                 if (fso.FileExists(tempPath) && fso.GetFile(tempPath).Size > 0) {
-                    var tempFile = fso.OpenTextFile(tempPath, 1, false, -1); // Читаем в Unicode
-                    remoteCode = tempFile.ReadAll();
-                    tempFile.Close();
+                    // ИСПОЛЬЗУЕМ СУПЕР-ДВИЖОК ДЛЯ ЧТЕНИЯ UTF-8 (Обход бага кодировки)
+                    var stream = new ActiveXObject("ADODB.Stream");
+                    stream.Type = 2; // Текстовый формат
+                    stream.Charset = "utf-8"; // Принудительно читаем как UTF-8 с Гитхаба
+                    stream.Open();
+                    stream.LoadFromFile(tempPath);
+                    remoteCode = stream.ReadText(-1); // Читаем весь текст целиком
+                    stream.Close();
+
                     fso.DeleteFile(tempPath, true); // Стираем временный файл
                     internetWorks = true;
                 }
             } catch(e) { internetWorks = false; }
 
-            // Сценарий 1: Самый первый запуск, а curl не смог скачать (нет сети)
+            // Сценарий 1: Самый первый запуск, сети нет вообще
             if (!fileExists && !internetWorks) {
                 alert("Критическая ошибка: Не обнаружено подключение к интернету!\n\nДля первого запуска требуется подключение к сети для загрузки файлов.");
                 return; 
             }
 
-            // Сценарий 2: Первый запуск — молча сохраняем скачанный код в logic.js
+            // Сценарий 2: Первый запуск — сохраняем чистый код на ПК
             if (!fileExists && internetWorks && remoteCode.trim().length > 0) {
                 try {
-                    var newFile = fso.CreateTextFile(localLogPath, true, true);
-                    newFile.Write(remoteCode);
-                    newFile.Close();
+                    // Сохраняем локальный файл тоже в UTF-8, чтобы система его понимала
+                    var streamSave = new ActiveXObject("ADODB.Stream");
+                    streamSave.Type = 2;
+                    streamSave.Charset = "utf-8";
+                    streamSave.Open();
+                    streamSave.WriteText(remoteCode);
+                    streamSave.SaveToFile(localLogPath, 2); // 2 = перезаписать файл
+                    streamSave.Close();
                 } catch(err) {}
                 launchLocalLogic();
                 return;
@@ -183,17 +190,25 @@
             if (fileExists && internetWorks && remoteCode.trim().length > 0) {
                 var localCode = "";
                 try {
-                    var localFile = fso.OpenTextFile(localLogPath, 1, false, -1);
-                    localCode = localFile.ReadAll();
-                    localFile.Close();
+                    var streamReadLocal = new ActiveXObject("ADODB.Stream");
+                    streamReadLocal.Type = 2;
+                    streamReadLocal.Charset = "utf-8";
+                    streamReadLocal.Open();
+                    streamReadLocal.LoadFromFile(localLogPath);
+                    localCode = streamReadLocal.ReadText(-1);
+                    streamReadLocal.Close();
                 } catch(err){}
 
-                if (remoteCode !== localCode) {
+                if (remoteCode.trim() !== localCode.trim()) {
                     if (confirm("Внимание! Обнаружена новая, более стабильная версия планировщика.\n\nУстановить обновление? (Ваши личные расписания НЕ будут затронуты).")) {
                         try {
-                            var updateFile = fso.CreateTextFile(localLogPath, true, true);
-                            updateFile.Write(remoteCode);
-                            updateFile.Close();
+                            var streamUpdate = new ActiveXObject("ADODB.Stream");
+                            streamUpdate.Type = 2;
+                            streamUpdate.Charset = "utf-8";
+                            streamUpdate.Open();
+                            streamUpdate.WriteText(remoteCode);
+                            streamUpdate.SaveToFile(localLogPath, 2);
+                            streamUpdate.Close();
                             alert("Приложение успешно обновлено до актуального релиза!");
                         } catch(err){}
                     }
