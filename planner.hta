@@ -133,42 +133,42 @@
         }
 
         // Запуск умного сетевого лаунчера
-         function checkAndDownloadUpdate() {
+        function checkAndDownloadUpdate() {
+            var fileExists = fso.FileExists(localLogPath);
+            
+            // Временный файл для скачивания из сети
+            var tempPath = fso.BuildPath(shell.CurrentDirectory, "logic_temp.txt");
+            if (fso.FileExists(tempPath)) { try { fso.DeleteFile(tempPath, true); } catch(e){} }
+
             var internetWorks = false;
             var remoteCode = "";
 
-            // Обновленный пробивной HTTP-движок для обхода защитных блокировок Windows
             try {
-                var http = null;
-                // Пробуем самый современный серверный движок Windows, который пускает на HTTPS сайты
-                try { http = new ActiveXObject("Msxml2.ServerXMLHTTP.6.0"); } catch(e) {
-                    try { http = new ActiveXObject("MSXML2.ServerXMLHTTP"); } catch(e) {
-                        try { http = new ActiveXObject("MSXML2.XMLHTTP"); } catch(e) {}
-                    }
-                }
+                // Используем мощную встроенную системную утилиту curl с флагом -k (игнорировать ошибки шифрования)
+                // Кэш сбрасываем, добавляя случайное число в конец URL
+                var uniqueUrl = SERVER_SCRIPT_URL + "?nocache=" + new Date().getTime();
+                var cmd = 'cmd /c curl -k -s -o "' + tempPath + '" "' + uniqueUrl + '"';
                 
-                if (http) {
-                    // Принудительно отключаем проверку сертификатов (чтобы старая Windows не паниковала из-за HTTPS Гитхаба)
-                    try { http.setOption(2, 13056); } catch(e){} 
-                    
-                    http.open("GET", SERVER_SCRIPT_URL + "?nocache=" + new Date().getTime(), false);
-                    http.send();
-                    if (http.status === 200) {
-                        remoteCode = http.responseText;
-                        internetWorks = true;
-                    }
+                // Запускаем скрытно (0) и ждем окончания загрузки (true)
+                shell.Run(cmd, 0, true);
+
+                // Если файл скачался и он не пустой — интернет работает!
+                if (fso.FileExists(tempPath) && fso.GetFile(tempPath).Size > 0) {
+                    var tempFile = fso.OpenTextFile(tempPath, 1, false, -1); // Читаем в Unicode
+                    remoteCode = tempFile.ReadAll();
+                    tempFile.Close();
+                    fso.DeleteFile(tempPath, true); // Стираем временный файл
+                    internetWorks = true;
                 }
-            } catch (e) { internetWorks = false; }
+            } catch(e) { internetWorks = false; }
 
-            var fileExists = fso.FileExists(localLogPath);
-
-            // Сценарий 1: Первый запуск, а интернет заблокирован
+            // Сценарий 1: Самый первый запуск, а curl не смог скачать (нет сети)
             if (!fileExists && !internetWorks) {
-                alert("Критическая ошибка: Не обнаружено подключение к интернету!\n\nДля первого запуска и загрузки базовых компонентов приложения требуется подключение к сети.");
+                alert("Критическая ошибка: Не обнаружено подключение к интернету!\n\nДля первого запуска требуется подключение к сети для загрузки файлов.");
                 return; 
             }
 
-            // Сценарий 2: Первый запуск — скачиваем логику
+            // Сценарий 2: Первый запуск — молча сохраняем скачанный код в logic.js
             if (!fileExists && internetWorks && remoteCode.trim().length > 0) {
                 try {
                     var newFile = fso.CreateTextFile(localLogPath, true, true);
@@ -179,7 +179,7 @@
                 return;
             }
 
-            // Сценарий 3: Обычный запуск — проверяем обновления
+            // Сценарий 3: Обычный запуск — сравниваем коды на ПК и на Гитхабе
             if (fileExists && internetWorks && remoteCode.trim().length > 0) {
                 var localCode = "";
                 try {
