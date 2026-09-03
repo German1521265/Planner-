@@ -99,3 +99,5 @@ function checkTime() {
 }
 setTimeout(function() { setTheme(currentTheme); }, 200);
 setInterval(checkTime, 3000); checkTime();
+// Текущая версия программы (меняйте её вручную при выпуске обновлений)
+var LOGIC_VERSION = "R 1.0.0"; 
